@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rag_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rag_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+      - name: Run Liquibase migrations
+        run: |
+          docker run --rm --network host \
+            -v "${{ github.workspace }}/db:/liquibase/changelog" \
+            -w /liquibase/changelog \
+            -e POSTGRES_HOST=localhost \
+            -e POSTGRES_PORT=5432 \
+            -e POSTGRES_DB=rag_test \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=postgres \
+            -e EMBEDDING_DIM=2048 \
+            liquibase/liquibase:4.29 \
+            /bin/sh -c "printf 'changeLogFile=changelog/db.changelog-master.xml\nurl=jdbc:postgresql://%s:%s/%s\nusername=%s\npassword=%s\ndriver=org.postgresql.Driver\nliquibase.hub.mode=off\n' \"\$POSTGRES_HOST\" \"\$POSTGRES_PORT\" \"\$POSTGRES_DB\" \"\$POSTGRES_USER\" \"\$POSTGRES_PASSWORD\" > /tmp/liquibase.runtime.properties && liquibase --defaults-file=/tmp/liquibase.runtime.properties update"
+      - name: Pytest
+        env:
+          TEST_POSTGRES_DSN: postgresql://postgres:postgres@localhost:5432/rag_test
+          LLM_MOCK: "1"
+          AUTH_MODE: dev
+          AUTH_SECRET_KEY: test-secret-key
+          EMBEDDING_DIM: "2048"
+        run: |
+          cd backend
+          pytest -v --cov=app --cov-report=term-missing --cov-fail-under=50
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install and test frontend
+        run: |
+          cd frontend
+          npm ci
+          npm test
+          npm run build
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build test stack
+        run: docker compose -f docker-compose.yml -f docker-compose.test.yml build

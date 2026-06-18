@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <property name="embedding.dim" value="2048"/>
+
+    <include file="changes/001_extensions_and_rag_baseline.sql" relativeToChangelogFile="true"/>
+    <include file="changes/002_job_queue.sql" relativeToChangelogFile="true"/>
+    <include file="changes/003_usage_tables.sql" relativeToChangelogFile="true"/>
+    <include file="changes/004_auth_and_multitenant.sql" relativeToChangelogFile="true"/>
+    <include file="changes/005_embedding_dim_alter.sql" relativeToChangelogFile="true"/>
+    <include file="changes/006_multitenant_chunk_unique.sql" relativeToChangelogFile="true"/>
+    <include file="changes/007_embedding_dim_4096.sql" relativeToChangelogFile="true"/>
+    <include file="changes/008_embedding_dim_4096_fix.sql" relativeToChangelogFile="true"/>
+
+</databaseChangeLog>

@@ -1,0 +1,122 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: srbs_rag_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-rag}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-rag}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  liquibase:
+    image: liquibase/liquibase:4.29
+    container_name: srbs_rag_liquibase
+    working_dir: /liquibase/changelog
+    volumes:
+      - ./db:/liquibase/changelog
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        printf 'changeLogFile=changelog/db.changelog-master.xml\nurl=jdbc:postgresql://%s:%s/%s\nusername=%s\npassword=%s\ndriver=org.postgresql.Driver\nliquibase.hub.mode=off\nembedding.dim=%s\n'
+        "$${POSTGRES_HOST}" "$${POSTGRES_PORT}" "$${POSTGRES_DB}" "$${POSTGRES_USER}" "$${POSTGRES_PASSWORD}" "$${EMBEDDING_DIM}"
+        > /tmp/liquibase.runtime.properties
+        && liquibase --defaults-file=/tmp/liquibase.runtime.properties update
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-rag}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-4096}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    build:
+      context: ./backend
+    image: srbs-rag-backend:local
+    container_name: srbs_rag_backend
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DSN: ${POSTGRES_DSN:-postgresql://postgres:postgres@postgres:5432/rag}
+      RAG_DOCS_DIR: /data/docs
+      RAG_PAGE_CACHE_DIR: /data/page_cache
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data/docs:/data/docs
+      - ./data/page_cache:/data/page_cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      liquibase:
+        condition: service_completed_successfully
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready').read()\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./backend
+    image: srbs-rag-backend:local
+    container_name: srbs_rag_worker
+    command: ["python", "-m", "app.worker"]
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DSN: ${POSTGRES_DSN:-postgresql://postgres:postgres@postgres:5432/rag}
+      RAG_DOCS_DIR: /data/docs
+      RAG_PAGE_CACHE_DIR: /data/page_cache
+      JOB_WORKER_ID: worker-1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data/docs:/data/docs
+      - ./data/page_cache:/data/page_cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      liquibase:
+        condition: service_completed_successfully
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: /api/v1
+    image: srbs-rag-frontend:local
+    container_name: srbs_rag_frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    restart: unless-stopped
+
+volumes:
+  pgdata:

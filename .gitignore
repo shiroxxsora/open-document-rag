@@ -1,0 +1,12 @@
+.env
+data/
+__pycache__/
+.pytest_cache/
+.venv/
+node_modules/
+dist/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+*.pyc
+uploads/
+agent-tools/

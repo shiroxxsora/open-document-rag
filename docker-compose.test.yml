@@ -1,0 +1,31 @@
+services:
+  postgres:
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: rag_test
+
+  liquibase:
+    environment:
+      POSTGRES_DB: rag_test
+
+  backend:
+    environment:
+      POSTGRES_DSN: postgresql://postgres:postgres@postgres:5432/rag_test
+      AUTH_MODE: dev
+      LLM_MOCK: "1"
+      AUTH_SECRET_KEY: test-secret-key
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-2048}
+
+  worker:
+    environment:
+      POSTGRES_DSN: postgresql://postgres:postgres@postgres:5432/rag_test
+      AUTH_MODE: dev
+      LLM_MOCK: "1"
+      AUTH_SECRET_KEY: test-secret-key
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-2048}
+
+  frontend:
+    build:
+      args:
+        VITE_API_BASE_URL: /api/v1

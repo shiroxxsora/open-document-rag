@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+python-multipart
+psycopg[binary]
+PyMuPDF
+python-docx
+pytesseract
+Pillow
+pytest
+httpx
+pytest-cov
+authlib
+python-jose[cryptography]
+cryptography
+itsdangerous
